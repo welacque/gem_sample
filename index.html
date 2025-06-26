@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>体組成データ可視化ツール</title>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js for creating charts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Chart.js Date Adapter to enable time scale -->
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { 
+            font-family: 'Inter', 'Noto Sans JP', sans-serif; 
+        }
+        .chart-container {
+            position: relative;
+            height: 40vh;
+            width: 100%;
+        }
+        .tab-button.active {
+            border-color: #3b82f6; /* blue-500 */
+            background-color: #eff6ff; /* blue-50 */
+            color: #1e40af; /* blue-800 */
+        }
+        .axis-input {
+             width: 6rem; /* 96px */
+             padding: 0.25rem 0.5rem;
+             border-radius: 0.375rem;
+             border: 1px solid #d1d5db; /* gray-300 */
+             text-align: center;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 p-4 sm:p-6 lg:p-8">
+    <div class="max-w-7xl mx-auto">
+        <!-- Header Section -->
+        <header class="mb-8 text-center">
+            <h1 class="text-3xl sm:text-4xl font-bold text-gray-900">体組成データ可視化ツール</h1>
+            <p class="mt-2 text-lg text-gray-600">CSVファイルまたはテキスト入力で、体重・体脂肪率・骨格筋率の推移を確認しましょう。</p>
+        </header>
+
+        <!-- Control Panel -->
+        <div class="bg-white p-6 rounded-xl shadow-md mb-8">
+             <!-- Tab buttons -->
+            <div class="mb-4 border-b border-gray-200">
+                <nav class="-mb-px flex space-x-4" aria-label="Tabs">
+                    <button id="fileTab" class="tab-button active whitespace-nowrap py-3 px-4 border-b-2 font-medium text-sm">
+                        ファイルで入力
+                    </button>
+                    <button id="textTab" class="tab-button whitespace-nowrap py-3 px-4 border-b-2 font-medium text-sm text-gray-500 hover:text-gray-700 hover:border-gray-300">
+                        テキストで入力
+                    </button>
+                </nav>
+            </div>
+            
+            <!-- Input Area -->
+            <div>
+                <!-- File Upload Area -->
+                <div id="fileInputArea">
+                    <label for="csvFile" class="block text-sm font-medium text-gray-700 mb-2">1. CSVファイルを選択</label>
+                    <input type="file" id="csvFile" accept=".csv" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer">
+                </div>
+                <!-- Text Input Area -->
+                <div id="textInputArea" class="hidden">
+                    <label for="csvText" class="block text-sm font-medium text-gray-700 mb-2">1. CSVデータを貼り付け</label>
+                    <textarea id="csvText" rows="8" class="block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500" placeholder="ここにCSVのヘッダーとデータを貼り付けてください&#10;例：&#10;&quot;測定日&quot;,&quot;体重(kg)&quot;,&quot;体脂肪(%)&quot;,&quot;骨格筋(%)&quot;&#10;&quot;2023/01/01&quot;,&quot;70.5&quot;,&quot;20.1&quot;,&quot;35.2&quot;"></textarea>
+                    <button id="processTextBtn" class="mt-4 w-full sm:w-auto inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                        貼り付けたテキストを処理
+                    </button>
+                </div>
+            </div>
+
+            <!-- Date Range Filter -->
+            <div class="mt-6 pt-6 border-t border-gray-200">
+                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                     <div>
+                        <label for="startDate" class="block text-sm font-medium text-gray-700 mb-2">2. 開始年月</label>
+                        <select id="startDate" class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 bg-gray-200" disabled></select>
+                     </div>
+                     <div>
+                        <label for="endDate" class="block text-sm font-medium text-gray-700 mb-2">3. 終了年月</label>
+                        <select id="endDate" class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 bg-gray-200" disabled></select>
+                     </div>
+                </div>
+            </div>
+             <div id="loading" class="text-center mt-4 text-blue-600 font-semibold hidden">データを処理中です...</div>
+        </div>
+
+        <!-- Message Area -->
+        <div id="messageArea" class="text-center mb-8 bg-blue-100 border-l-4 border-blue-500 text-blue-700 p-4 rounded-md shadow">
+            <p>はじめに、上のタブから入力方法を選び、データを入力してください。</p>
+            <p class="text-xs mt-2">必須の列: "測定日", "体重(kg)", "体脂肪(%)", "骨格筋(%)"</p>
+        </div>
+
+
+        <!-- Charts Area -->
+        <div id="chartContainer" class="grid grid-cols-1 lg:grid-cols-2 gap-8 hidden">
+            <!-- Combined Chart -->
+            <div class="bg-white p-4 sm:p-6 rounded-xl shadow-md lg:col-span-2">
+                <h2 class="text-xl font-bold mb-2 text-gray-800">統合グラフ：体重・体脂肪率・骨格筋率</h2>
+                <div class="flex flex-wrap gap-x-6 gap-y-2 mb-4 text-sm">
+                    <div class="flex items-center space-x-2">
+                        <label for="combinedWeightMin" class="font-medium text-blue-600">体重(kg) 範囲:</label>
+                        <input type="number" id="combinedWeightMin" placeholder="自動" class="axis-input">
+                        <span>～</span>
+                        <input type="number" id="combinedWeightMax" placeholder="自動" class="axis-input">
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <label for="combinedPercentMin" class="font-medium text-green-600">率(%) 範囲:</label>
+                        <input type="number" id="combinedPercentMin" placeholder="自動" class="axis-input">
+                        <span>～</span>
+                        <input type="number" id="combinedPercentMax" placeholder="自動" class="axis-input">
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <canvas id="combinedChart"></canvas>
+                </div>
+            </div>
+            <!-- Individual Charts -->
+            <div class="bg-white p-4 sm:p-6 rounded-xl shadow-md">
+                <h2 class="text-xl font-bold mb-2 text-gray-800">体重(kg)の推移</h2>
+                <div class="flex items-center space-x-2 mb-4 text-sm">
+                    <label for="weightMin" class="font-medium">縦軸 範囲:</label>
+                    <input type="number" id="weightMin" placeholder="自動" class="axis-input">
+                    <span>～</span>
+                    <input type="number" id="weightMax" placeholder="自動" class="axis-input">
+                </div>
+                <div class="chart-container">
+                    <canvas id="weightChart"></canvas>
+                </div>
+            </div>
+            <div class="bg-white p-4 sm:p-6 rounded-xl shadow-md">
+                <h2 class="text-xl font-bold mb-2 text-gray-800">体脂肪率(%)の推移</h2>
+                <div class="flex items-center space-x-2 mb-4 text-sm">
+                    <label for="fatMin" class="font-medium">縦軸 範囲:</label>
+                    <input type="number" id="fatMin" placeholder="自動" class="axis-input">
+                    <span>～</span>
+                    <input type="number" id="fatMax" placeholder="自動" class="axis-input">
+                </div>
+                <div class="chart-container">
+                    <canvas id="fatPercentageChart"></canvas>
+                </div>
+            </div>
+            <div class="bg-white p-4 sm:p-6 rounded-xl shadow-md lg:col-start-1">
+                <h2 class="text-xl font-bold mb-2 text-gray-800">骨格筋率(%)の推移</h2>
+                <div class="flex items-center space-x-2 mb-4 text-sm">
+                    <label for="muscleMin" class="font-medium">縦軸 範囲:</label>
+                    <input type="number" id="muscleMin" placeholder="自動" class="axis-input">
+                    <span>～</span>
+                    <input type="number" id="muscleMax" placeholder="自動" class="axis-input">
+                </div>
+                <div class="chart-container">
+                    <canvas id="musclePercentageChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- DOM Elements ---
+        const csvFileInput = document.getElementById('csvFile'),
+              csvTextInput = document.getElementById('csvText'),
+              processTextBtn = document.getElementById('processTextBtn'),
+              startDateSelect = document.getElementById('startDate'),
+              endDateSelect = document.getElementById('endDate'),
+              loadingIndicator = document.getElementById('loading'),
+              messageArea = document.getElementById('messageArea'),
+              chartContainer = document.getElementById('chartContainer'),
+              fileTab = document.getElementById('fileTab'),
+              textTab = document.getElementById('textTab'),
+              fileInputArea = document.getElementById('fileInputArea'),
+              textInputArea = document.getElementById('textInputArea');
+
+        const axisInputs = {
+            combinedWeightMin: document.getElementById('combinedWeightMin'),
+            combinedWeightMax: document.getElementById('combinedWeightMax'),
+            combinedPercentMin: document.getElementById('combinedPercentMin'),
+            combinedPercentMax: document.getElementById('combinedPercentMax'),
+            weightMin: document.getElementById('weightMin'),
+            weightMax: document.getElementById('weightMax'),
+            fatMin: document.getElementById('fatMin'),
+            fatMax: document.getElementById('fatMax'),
+            muscleMin: document.getElementById('muscleMin'),
+            muscleMax: document.getElementById('muscleMax')
+        };
+
+        // --- Global State ---
+        let allData = [];
+        let charts = {};
+
+        // --- Event Listeners ---
+        fileTab.addEventListener('click', () => switchTab('file'));
+        textTab.addEventListener('click', () => switchTab('text'));
+        csvFileInput.addEventListener('change', handleFileSelect);
+        processTextBtn.addEventListener('click', handleTextProcess);
+        startDateSelect.addEventListener('change', updateCharts);
+        endDateSelect.addEventListener('change', updateCharts);
+        Object.values(axisInputs).forEach(input => {
+            input.addEventListener('change', updateCharts);
+        });
+
+        // --- Functions ---
+        function switchTab(tabName) {
+            if (tabName === 'file') {
+                fileTab.classList.add('active'); textTab.classList.remove('active');
+                fileInputArea.style.display = 'block'; textInputArea.style.display = 'none';
+            } else {
+                fileTab.classList.remove('active'); textTab.classList.add('active');
+                fileInputArea.style.display = 'none'; textInputArea.style.display = 'block';
+            }
+        }
+        
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => processData(e.target.result);
+            reader.onerror = () => showMessage('ファイルの読み込みに失敗しました。', 'error');
+            reader.readAsText(file, 'UTF-8');
+        }
+
+        function handleTextProcess() {
+            const csvText = csvTextInput.value;
+            if (!csvText.trim()) { showMessage('テキストエリアにデータを貼り付けてください。', 'warn'); return; }
+            processData(csvText);
+        }
+        
+        function processData(csvText) {
+            loadingIndicator.style.display = 'block'; messageArea.style.display = 'none'; chartContainer.style.display = 'none';
+            allData = [];
+            startDateSelect.innerHTML = ''; endDateSelect.innerHTML = '';
+            startDateSelect.disabled = true; endDateSelect.disabled = true;
+
+            setTimeout(() => {
+                try {
+                    parseCSV(csvText);
+                    if(allData.length > 0) {
+                        populateDateFilters();
+                        updateCharts();
+                        chartContainer.style.display = 'grid';
+                    } else {
+                        showMessage('有効なデータが見つかりませんでした。ヘッダーとデータ形式を確認してください。', 'error');
+                    }
+                } catch (error) {
+                    console.error('Error processing data:', error);
+                    showMessage(`データの処理中にエラーが発生しました: ${error.message}`, 'error');
+                } finally {
+                    loadingIndicator.style.display = 'none';
+                }
+            }, 50);
+        }
+
+        function parseCSV(csvText) {
+            allData = [];
+            const lines = csvText.trim().split(/\r\n|\n/);
+            if (lines.length < 2) return;
+            const header = lines[0].split(',').map(h => h.replace(/"/g, '').trim());
+            const requiredColumns = { date: '測定日', weight: '体重(kg)', fat: '体脂肪(%)', muscle: '骨格筋(%)' };
+            const indices = {};
+            for (const key in requiredColumns) {
+                const index = header.indexOf(requiredColumns[key]);
+                if (index === -1) throw new Error(`CSVに必須の列 "${requiredColumns[key]}" が見つかりません。`);
+                indices[key] = index;
+            }
+            allData = lines.slice(1).map(line => {
+                if (!line.trim()) return null;
+                const values = line.split(',');
+                const rawDate = values[indices.date]?.replace(/"/g, '').trim();
+                const rawWeight = values[indices.weight]?.replace(/"/g, '').trim();
+                const rawFat = values[indices.fat]?.replace(/"/g, '').trim();
+                const rawMuscle = values[indices.muscle]?.replace(/"/g, '').trim();
+                const date = new Date(rawDate), weight = parseFloat(rawWeight), fat = parseFloat(rawFat), muscle = parseFloat(rawMuscle);
+                if (isNaN(date.getTime()) || isNaN(weight) || isNaN(fat) || isNaN(muscle)) return null;
+                return { date, weight, fat, muscle };
+            }).filter(Boolean);
+            allData.sort((a, b) => a.date - b.date);
+        }
+        
+        function populateDateFilters() {
+            if (allData.length === 0) return;
+            const uniqueMonths = [...new Set(allData.map(d => d.date.toISOString().slice(0, 7)))];
+            uniqueMonths.forEach(month => {
+                startDateSelect.add(new Option(month, month));
+                endDateSelect.add(new Option(month, month));
+            });
+            startDateSelect.value = uniqueMonths[0]; endDateSelect.value = uniqueMonths[uniqueMonths.length - 1];
+            startDateSelect.disabled = false; endDateSelect.disabled = false;
+            startDateSelect.classList.remove('bg-gray-200'); endDateSelect.classList.remove('bg-gray-200');
+        }
+
+        function updateCharts() {
+            if (allData.length === 0) return;
+            Object.values(charts).forEach(chart => chart?.destroy());
+            charts = {};
+            const startMonth = startDateSelect.value, endMonth = endDateSelect.value;
+            if (!startMonth || !endMonth || startMonth > endMonth) return;
+
+            const filteredData = allData.filter(d => {
+                const dataMonth = d.date.toISOString().slice(0, 7);
+                return dataMonth >= startMonth && dataMonth <= endMonth;
+            });
+            if (filteredData.length === 0) {
+                showMessage('選択された期間に表示できるデータがありません。', 'warn');
+                chartContainer.style.display = 'none';
+                return;
+            }
+            messageArea.style.display = 'none'; chartContainer.style.display = 'grid';
+
+            // Convert data to {x: Date, y: value} format for time scale
+            const weightDataPoints = filteredData.map(d => ({ x: d.date, y: d.weight }));
+            const fatDataPoints = filteredData.map(d => ({ x: d.date, y: d.fat }));
+            const muscleDataPoints = filteredData.map(d => ({ x: d.date, y: d.muscle }));
+            
+            const getAxisRange = (minId, maxId) => {
+                const min = parseFloat(axisInputs[minId].value);
+                const max = parseFloat(axisInputs[maxId].value);
+                const range = {};
+                if (!isNaN(min)) range.min = min;
+                if (!isNaN(max)) range.max = max;
+                return range;
+            };
+            
+            // --- Common Chart Options for Time Scale ---
+            const commonTimeScaleOptions = {
+                responsive: true, maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: { tooltip: { callbacks: { title: (tooltipItems) => new Date(tooltipItems[0].parsed.x).toLocaleDateString('ja-JP') } } },
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: {
+                            unit: 'day',
+                            tooltipFormat: 'yyyy/MM/dd',
+                            displayFormats: { day: 'MM/dd', week: 'yyyy/MM/dd', month: 'yyyy/MM' }
+                        },
+                        title: { display: true, text: '日付' }
+                    }
+                }
+            };
+
+            // --- Create Individual Charts ---
+            charts.weight = createLineChart('weightChart', '体重(kg)', weightDataPoints, 'rgba(59, 130, 246, 1)', commonTimeScaleOptions, getAxisRange('weightMin', 'weightMax'));
+            charts.fat = createLineChart('fatPercentageChart', '体脂肪率(%)', fatDataPoints, 'rgba(239, 68, 68, 1)', commonTimeScaleOptions, getAxisRange('fatMin', 'fatMax'));
+            charts.muscle = createLineChart('musclePercentageChart', '骨格筋率(%)', muscleDataPoints, 'rgba(22, 163, 74, 1)', commonTimeScaleOptions, getAxisRange('muscleMin', 'muscleMax'));
+            
+            // --- Create Combined Chart ---
+            const combinedCtx = document.getElementById('combinedChart').getContext('2d');
+            charts.combined = new Chart(combinedCtx, {
+                type: 'line',
+                data: {
+                    datasets: [
+                        { label: '体重(kg)', data: weightDataPoints, borderColor: 'rgba(59, 130, 246, 1)', backgroundColor: 'rgba(59, 130, 246, 0.1)', yAxisID: 'y-weight', tension: 0.1 },
+                        { label: '体脂肪率(%)', data: fatDataPoints, borderColor: 'rgba(239, 68, 68, 1)', backgroundColor: 'rgba(239, 68, 68, 0.1)', yAxisID: 'y-percent', tension: 0.1 },
+                        { label: '骨格筋率(%)', data: muscleDataPoints, borderColor: 'rgba(22, 163, 74, 1)', backgroundColor: 'rgba(22, 163, 74, 0.1)', yAxisID: 'y-percent', tension: 0.1 }
+                    ]
+                },
+                options: {
+                    ...commonTimeScaleOptions,
+                    scales: {
+                        ...commonTimeScaleOptions.scales,
+                        'y-weight': { type: 'linear', position: 'left', title: { display: true, text: '体重 (kg)', color: 'rgba(59, 130, 246, 1)' }, grid: { drawOnChartArea: true }, ...getAxisRange('combinedWeightMin', 'combinedWeightMax') },
+                        'y-percent': { type: 'linear', position: 'right', title: { display: true, text: 'パーセンテージ (%)' }, grid: { drawOnChartArea: false }, ...getAxisRange('combinedPercentMin', 'combinedPercentMax') }
+                    }
+                }
+            });
+        }
+        
+        function createLineChart(canvasId, label, dataPoints, color, options, yAxisRange) {
+            const ctx = document.getElementById(canvasId).getContext('2d');
+            return new Chart(ctx, {
+                type: 'line',
+                data: { datasets: [{ label: label, data: dataPoints, borderColor: color, backgroundColor: color.replace('1)', '0.1)'), fill: true, tension: 0.1 }] },
+                options: { ...options, scales: { ...options.scales, y: { ...yAxisRange } } }
+            });
+        }
+
+        function showMessage(text, type = 'info') {
+            messageArea.style.display = 'block';
+            messageArea.innerHTML = `<p>${text}</p>`;
+            messageArea.className = 'text-center mb-8 p-4 rounded-md shadow';
+            const typeClasses = {
+                error: 'bg-red-100 border-l-4 border-red-500 text-red-700',
+                warn: 'bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700',
+                info: 'bg-blue-100 border-l-4 border-blue-500 text-blue-700'
+            };
+            messageArea.classList.add(...(typeClasses[type] || typeClasses.info).split(' '));
+        }
+        
+        switchTab('file');
+    </script>
+</body>
+</html>
